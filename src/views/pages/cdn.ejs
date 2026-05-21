@@ -1,0 +1,184 @@
+<div class="page-header">
+  <h2>CDN Management</h2>
+  <p>Manage public and signed URLs for your files</p>
+</div>
+
+<div class="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon green">&#9729;</div>
+    <div class="stat-value" id="stat-public">--</div>
+    <div class="stat-label">Public Files</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon blue">&#9679;</div>
+    <div class="stat-value" id="stat-private">--</div>
+    <div class="stat-label">Private Files</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Public Files</h3>
+  </div>
+  <div class="card-body">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Size</th>
+          <th>Public URL</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cdn-public-tbody">
+        <tr><td colspan="5"><div class="empty-state"><p>Loading...</p></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Generate Signed URL</h3>
+  </div>
+  <div class="card-body">
+    <div class="form-group">
+      <label>Select File</label>
+      <select id="signed-file-select">
+        <option value="">-- Select a file --</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label>Expiry (seconds)</label>
+      <input type="number" id="signed-expiry" value="3600" min="60" max="86400">
+    </div>
+    <button class="btn btn-primary" onclick="generateSignedUrl()">Generate Signed URL</button>
+    <div id="signed-url-result" style="margin-top: 16px;"></div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>All Files - Publish/Unpublish</h3>
+  </div>
+  <div class="card-body">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="cdn-all-tbody">
+        <tr><td colspan="3"><div class="empty-state"><p>Loading...</p></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', loadCdnData);
+
+  async function loadCdnData() {
+    try {
+      const res = await apiCall('/api/files?limit=100');
+      const files = res.data;
+
+      const publicFiles = files.filter(f => f.isPublic);
+      const privateFiles = files.filter(f => !f.isPublic);
+
+      document.getElementById('stat-public').textContent = publicFiles.length;
+      document.getElementById('stat-private').textContent = privateFiles.length;
+
+      // Public files table
+      const publicTbody = document.getElementById('cdn-public-tbody');
+      if (publicFiles.length === 0) {
+        publicTbody.innerHTML = '<tr><td colspan="5"><div class="empty-state"><p>No public files</p></div></td></tr>';
+      } else {
+        publicTbody.innerHTML = publicFiles.map(f => `
+          <tr>
+            <td><strong>${f.name}</strong></td>
+            <td><span class="badge badge-info">${f.mimeType.split('/').pop()}</span></td>
+            <td>${formatBytes(f.size)}</td>
+            <td><a href="/cdn/${f.publicSlug}" target="_blank" class="btn btn-outline btn-sm">/cdn/${f.publicSlug}</a></td>
+            <td>
+              <button class="btn btn-danger btn-sm" onclick="unpublishFile('${f.id}')">Unpublish</button>
+            </td>
+          </tr>
+        `).join('');
+      }
+
+      // File select for signed URL
+      const select = document.getElementById('signed-file-select');
+      select.innerHTML = '<option value="">-- Select a file --</option>' +
+        files.map(f => `<option value="${f.id}">${f.name} (${formatBytes(f.size)})</option>`).join('');
+
+      // All files table
+      const allTbody = document.getElementById('cdn-all-tbody');
+      allTbody.innerHTML = files.map(f => `
+        <tr>
+          <td><strong>${f.name}</strong></td>
+          <td>${f.isPublic
+            ? '<span class="badge badge-success">Public</span>'
+            : '<span class="badge badge-danger">Private</span>'}</td>
+          <td>
+            ${f.isPublic
+              ? `<button class="btn btn-danger btn-sm" onclick="unpublishFile('${f.id}')">Unpublish</button>`
+              : `<button class="btn btn-primary btn-sm" onclick="publishFile('${f.id}')">Publish</button>`}
+            <button class="btn btn-outline btn-sm" onclick="generateSignedUrlFor('${f.id}')">Signed URL</button>
+          </td>
+        </tr>
+      `).join('');
+
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function publishFile(id) {
+    try {
+      const res = await apiCall(`/api/files/${id}/publish`, { method: 'POST' });
+      showToast(`File published at /cdn/${res.data.slug}`);
+      loadCdnData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function unpublishFile(id) {
+    if (!confirm('Revoke public access for this file?')) return;
+    try {
+      await apiCall(`/api/files/${id}/publish`, { method: 'DELETE' });
+      showToast('Public access revoked');
+      loadCdnData();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function generateSignedUrl() {
+    const fileId = document.getElementById('signed-file-select').value;
+    const expiry = document.getElementById('signed-expiry').value;
+    if (!fileId) return showToast('Please select a file', 'error');
+    await generateSignedUrlFor(fileId, expiry);
+  }
+
+  async function generateSignedUrlFor(fileId, expiry) {
+    try {
+      const exp = expiry || document.getElementById('signed-expiry').value || 3600;
+      const res = await apiCall(`/api/files/${fileId}/signed-url?expiry=${exp}`);
+      const fullUrl = window.location.origin + res.data.url;
+      document.getElementById('signed-url-result').innerHTML = `
+        <div class="alert alert-success">
+          <strong>Signed URL generated!</strong> Expires in ${res.data.expiresIn}s<br>
+          <code style="word-break: break-all;">${fullUrl}</code><br>
+          <button class="btn btn-outline btn-sm" style="margin-top: 8px;" onclick="navigator.clipboard.writeText('${fullUrl}'); showToast('Copied!')">Copy URL</button>
+        </div>
+      `;
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+</script>

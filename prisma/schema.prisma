@@ -1,0 +1,66 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Account {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  credentials  String   // Encrypted OAuth2 credentials JSON
+  totalStorage BigInt   @default(0) @map("total_storage")
+  usedStorage  BigInt   @default(0) @map("used_storage")
+  isActive     Boolean  @default(true) @map("is_active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  files        File[]
+
+  @@map("accounts")
+}
+
+model Folder {
+  id        String   @id @default(uuid())
+  name      String
+  parentId  String?  @map("parent_id")
+  parent    Folder?  @relation("FolderTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children  Folder[] @relation("FolderTree")
+  files     File[]
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("folders")
+}
+
+model File {
+  id          String   @id @default(uuid())
+  driveFileId String   @map("drive_file_id")
+  accountId   String   @map("account_id")
+  account     Account  @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  folderId    String?  @map("folder_id")
+  folder      Folder?  @relation(fields: [folderId], references: [id], onDelete: SetNull)
+  name        String
+  mimeType    String   @map("mime_type")
+  size        BigInt   @default(0)
+  path        String   @default("/")
+  isPublic    Boolean  @default(false) @map("is_public")
+  publicSlug  String?  @unique @map("public_slug")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("files")
+}
+
+model ApiKey {
+  id          String   @id @default(uuid())
+  keyHash     String   @unique @map("key_hash")
+  name        String
+  permissions String   @default("[\"*\"]") // JSON array of permissions
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at")
+  lastUsedAt  DateTime? @map("last_used_at")
+
+  @@map("api_keys")
+}

@@ -1,0 +1,93 @@
+<div class="page-header">
+  <h2>Accounts</h2>
+  <p>Manage connected Google Drive accounts</p>
+</div>
+
+<div style="margin-bottom: 20px;">
+  <button class="btn btn-primary" onclick="addAccount()">+ Add Account</button>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <table class="table" id="accounts-table">
+      <thead>
+        <tr>
+          <th>Email</th>
+          <th>Total Storage</th>
+          <th>Used</th>
+          <th>Free</th>
+          <th>Status</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="accounts-tbody">
+        <tr><td colspan="6" class="empty-state"><p>Loading...</p></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', loadAccounts);
+
+  async function loadAccounts() {
+    try {
+      const res = await apiCall('/api/accounts');
+      const tbody = document.getElementById('accounts-tbody');
+
+      if (res.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="icon">&#9734;</div><p>No accounts connected. Click "Add Account" to get started.</p></div></td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = res.data.map(a => `
+        <tr>
+          <td><strong>${a.email}</strong></td>
+          <td>${formatBytes(a.totalStorage)}</td>
+          <td>${formatBytes(a.usedStorage)}</td>
+          <td>${formatBytes(a.freeStorage)}</td>
+          <td><span class="badge ${a.isActive ? 'badge-success' : 'badge-danger'}">${a.isActive ? 'Active' : 'Inactive'}</span></td>
+          <td>
+            <button class="btn btn-outline btn-sm" onclick="refreshAccount('${a.id}')">Refresh</button>
+            <button class="btn btn-danger btn-sm" onclick="deleteAccount('${a.id}', '${a.email}')">Delete</button>
+          </td>
+        </tr>
+      `).join('');
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function addAccount() {
+    try {
+      const res = await apiCall('/api/accounts/oauth/url');
+      window.open(res.data.url, '_blank');
+      showToast('OAuth window opened. Complete the authorization flow.');
+      // Poll for new account
+      setTimeout(loadAccounts, 10000);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function refreshAccount(id) {
+    try {
+      await apiCall(`/api/accounts/${id}/refresh`, { method: 'POST' });
+      showToast('Account refreshed');
+      loadAccounts();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function deleteAccount(id, email) {
+    if (!confirm(`Delete account ${email}? This will also remove all file metadata for this account.`)) return;
+    try {
+      await apiCall(`/api/accounts/${id}`, { method: 'DELETE' });
+      showToast('Account deleted');
+      loadAccounts();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+</script>

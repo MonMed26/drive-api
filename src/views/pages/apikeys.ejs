@@ -1,0 +1,136 @@
+<div class="page-header">
+  <h2>API Keys</h2>
+  <p>Manage API keys for accessing the storage API</p>
+</div>
+
+<div style="margin-bottom: 20px; display: flex; gap: 12px; align-items: center;">
+  <button class="btn btn-primary" onclick="showGenerateModal()">+ Generate New Key</button>
+  <button class="btn btn-outline" onclick="changeApiKey()">Change Active Key</button>
+</div>
+
+<div class="alert alert-info" id="current-key-info">
+  Current key: <code id="current-key-display">...</code>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>API Keys</h3>
+  </div>
+  <div class="card-body">
+    <p style="font-size: 13px; color: var(--text-secondary); margin-bottom: 16px;">
+      Note: API keys are hashed and cannot be retrieved. Only the key prefix is shown for identification.
+    </p>
+    <div id="keys-info">
+      <p style="color: var(--text-secondary); font-size: 14px;">
+        API keys are managed securely. Use the generate button to create new keys.
+        The full key is only shown once at creation time.
+      </p>
+    </div>
+  </div>
+</div>
+
+<!-- Generate Key Modal -->
+<div class="modal-overlay" id="generate-modal">
+  <div class="modal">
+    <h3>Generate New API Key</h3>
+    <div class="form-group">
+      <label>Key Name / Label</label>
+      <input type="text" id="new-key-name" placeholder="e.g. Production Key">
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn btn-primary" onclick="generateKey()">Generate</button>
+      <button class="btn btn-outline" onclick="closeGenerateModal()">Cancel</button>
+    </div>
+    <div id="generate-result" style="margin-top: 16px;"></div>
+  </div>
+</div>
+
+<!-- Change Key Modal -->
+<div class="modal-overlay" id="change-key-modal">
+  <div class="modal">
+    <h3>Change Active API Key</h3>
+    <p style="margin-bottom: 16px; font-size: 14px; color: var(--text-secondary);">
+      Enter a different API key to use for dashboard operations.
+    </p>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="text" id="change-key-input" placeholder="gdagg_...">
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn btn-primary" onclick="saveNewKey()">Save</button>
+      <button class="btn btn-outline" onclick="closeChangeKeyModal()">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const key = getApiKey();
+    if (key) {
+      document.getElementById('current-key-display').textContent = key.substring(0, 20) + '...';
+    } else {
+      document.getElementById('current-key-display').textContent = 'No key set';
+    }
+  });
+
+  function showGenerateModal() {
+    document.getElementById('generate-modal').classList.add('active');
+    document.getElementById('generate-result').innerHTML = '';
+    document.getElementById('new-key-name').value = '';
+  }
+
+  function closeGenerateModal() {
+    document.getElementById('generate-modal').classList.remove('active');
+  }
+
+  async function generateKey() {
+    const name = document.getElementById('new-key-name').value.trim();
+    if (!name) return showToast('Please enter a key name', 'error');
+
+    try {
+      const key = getApiKey();
+      const headers = { 'Content-Type': 'application/json' };
+      if (key) headers['X-API-Key'] = key;
+
+      const res = await fetch('/api/setup/generate-key', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ name }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      document.getElementById('generate-result').innerHTML = `
+        <div class="alert alert-success">
+          <strong>Key generated successfully!</strong><br>
+          <code style="word-break: break-all; font-size: 13px;">${data.data.apiKey}</code><br>
+          <p style="margin-top: 8px; font-size: 12px;">Save this key now. It cannot be retrieved again.</p>
+          <button class="btn btn-outline btn-sm" style="margin-top: 8px;" 
+            onclick="navigator.clipboard.writeText('${data.data.apiKey}'); showToast('Copied!')">Copy Key</button>
+          <button class="btn btn-primary btn-sm" style="margin-top: 8px;" 
+            onclick="setApiKey('${data.data.apiKey}'); closeGenerateModal(); location.reload();">Use This Key</button>
+        </div>
+      `;
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function changeApiKey() {
+    document.getElementById('change-key-modal').classList.add('active');
+    document.getElementById('change-key-input').value = '';
+  }
+
+  function closeChangeKeyModal() {
+    document.getElementById('change-key-modal').classList.remove('active');
+  }
+
+  function saveNewKey() {
+    const key = document.getElementById('change-key-input').value.trim();
+    if (!key) return showToast('Please enter an API key', 'error');
+    setApiKey(key);
+    closeChangeKeyModal();
+    showToast('API key updated');
+    location.reload();
+  }
+</script>

@@ -1,0 +1,194 @@
+<div class="page-header">
+  <h2>Files</h2>
+  <p>Manage files across all connected Google Drive accounts</p>
+</div>
+
+<!-- Upload Zone -->
+<div class="card">
+  <div class="card-header">
+    <h3>Upload File</h3>
+  </div>
+  <div class="card-body">
+    <div class="file-upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+      <div class="icon">&#8682;</div>
+      <p>Click or drag & drop files here to upload</p>
+      <p style="font-size: 12px; margin-top: 4px;">Max file size: 100MB</p>
+    </div>
+    <input type="file" id="file-input" style="display: none;" onchange="uploadFile(this.files[0])">
+    <div id="upload-progress" style="margin-top: 12px; display: none;">
+      <div class="progress-bar" style="height: 12px;">
+        <div class="fill blue" id="upload-bar" style="width: 0%;"></div>
+      </div>
+      <p style="font-size: 13px; margin-top: 8px; color: var(--text-secondary);" id="upload-status">Uploading...</p>
+    </div>
+  </div>
+</div>
+
+<!-- Search & List -->
+<div class="card">
+  <div class="card-header">
+    <h3>All Files</h3>
+  </div>
+  <div class="card-body">
+    <div class="search-bar">
+      <input type="text" id="search-input" placeholder="Search files by name..." onkeyup="handleSearch(event)">
+      <button class="btn btn-primary" onclick="searchFiles()">Search</button>
+      <button class="btn btn-outline" onclick="clearSearch()">Clear</button>
+    </div>
+
+    <table class="table" id="files-table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Size</th>
+          <th>Path</th>
+          <th>Public</th>
+          <th>Date</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="files-tbody">
+        <tr><td colspan="7"><div class="empty-state"><p>Loading...</p></div></td></tr>
+      </tbody>
+    </table>
+
+    <div class="pagination" id="pagination"></div>
+  </div>
+</div>
+
+<script>
+  let currentPage = 1;
+  let currentSearch = '';
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadFiles();
+    setupDragDrop();
+  });
+
+  function setupDragDrop() {
+    const zone = document.getElementById('upload-zone');
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) uploadFile(e.dataTransfer.files[0]);
+    });
+  }
+
+  async function uploadFile(file) {
+    if (!file) return;
+    const progress = document.getElementById('upload-progress');
+    const status = document.getElementById('upload-status');
+    progress.style.display = 'block';
+    status.textContent = `Uploading ${file.name}...`;
+    document.getElementById('upload-bar').style.width = '50%';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('path', '/');
+
+      const key = getApiKey();
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: { 'X-API-Key': key },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      document.getElementById('upload-bar').style.width = '100%';
+      status.textContent = `Uploaded ${file.name} successfully!`;
+      showToast('File uploaded successfully');
+      setTimeout(() => { progress.style.display = 'none'; }, 3000);
+      loadFiles();
+    } catch (err) {
+      status.textContent = `Upload failed: ${err.message}`;
+      document.getElementById('upload-bar').style.width = '0%';
+      showToast(err.message, 'error');
+    }
+  }
+
+  function handleSearch(e) {
+    if (e.key === 'Enter') searchFiles();
+  }
+
+  function searchFiles() {
+    currentSearch = document.getElementById('search-input').value.trim();
+    currentPage = 1;
+    loadFiles();
+  }
+
+  function clearSearch() {
+    document.getElementById('search-input').value = '';
+    currentSearch = '';
+    currentPage = 1;
+    loadFiles();
+  }
+
+  async function loadFiles() {
+    try {
+      const endpoint = currentSearch
+        ? `/api/files/search?q=${encodeURIComponent(currentSearch)}&page=${currentPage}&limit=10`
+        : `/api/files?page=${currentPage}&limit=10`;
+
+      const res = await apiCall(endpoint);
+      const tbody = document.getElementById('files-tbody');
+
+      if (res.data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><div class="icon">&#9776;</div><p>No files found</p></div></td></tr>';
+        document.getElementById('pagination').innerHTML = '';
+        return;
+      }
+
+      tbody.innerHTML = res.data.map(f => `
+        <tr>
+          <td><strong>${f.name}</strong></td>
+          <td><span class="badge badge-info">${f.mimeType.split('/').pop()}</span></td>
+          <td>${formatBytes(f.size)}</td>
+          <td>${f.path}</td>
+          <td>${f.isPublic ? '<span class="badge badge-success">Public</span>' : '<span class="badge badge-danger">Private</span>'}</td>
+          <td>${new Date(f.createdAt).toLocaleDateString()}</td>
+          <td>
+            <a href="/api/files/${f.id}/download" class="btn btn-outline btn-sm" target="_blank">DL</a>
+            <button class="btn btn-danger btn-sm" onclick="deleteFile('${f.id}', '${f.name}')">Del</button>
+          </td>
+        </tr>
+      `).join('');
+
+      // Pagination
+      const { page, totalPages } = res.pagination;
+      let paginationHtml = '';
+      if (totalPages > 1) {
+        if (page > 1) paginationHtml += `<a href="#" onclick="goToPage(${page - 1})">&laquo;</a>`;
+        for (let i = 1; i <= totalPages; i++) {
+          paginationHtml += i === page
+            ? `<span class="active">${i}</span>`
+            : `<a href="#" onclick="goToPage(${i})">${i}</a>`;
+        }
+        if (page < totalPages) paginationHtml += `<a href="#" onclick="goToPage(${page + 1})">&raquo;</a>`;
+      }
+      document.getElementById('pagination').innerHTML = paginationHtml;
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function goToPage(page) {
+    currentPage = page;
+    loadFiles();
+  }
+
+  async function deleteFile(id, name) {
+    if (!confirm(`Delete file "${name}"?`)) return;
+    try {
+      await apiCall(`/api/files/${id}`, { method: 'DELETE' });
+      showToast('File deleted');
+      loadFiles();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+</script>

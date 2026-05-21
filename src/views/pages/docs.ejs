@@ -1,0 +1,543 @@
+<div class="page-header">
+  <h2>API Documentation</h2>
+  <p>Complete reference for the Google Drive Aggregator Storage API</p>
+</div>
+
+<div class="alert alert-info">
+  Base URL: <code id="base-url">http://localhost:3000</code> | 
+  Auth: <code>X-API-Key: &lt;your_api_key&gt;</code>
+</div>
+
+<!-- Quick Nav -->
+<div class="card" style="margin-bottom: 24px;">
+  <div class="card-body" style="padding: 16px 24px;">
+    <div style="display: flex; flex-wrap: wrap; gap: 8px;">
+      <a href="#section-auth" class="btn btn-outline btn-sm">Authentication</a>
+      <a href="#section-setup" class="btn btn-outline btn-sm">Setup</a>
+      <a href="#section-accounts" class="btn btn-outline btn-sm">Accounts</a>
+      <a href="#section-files" class="btn btn-outline btn-sm">Files</a>
+      <a href="#section-storage" class="btn btn-outline btn-sm">Storage</a>
+      <a href="#section-cdn" class="btn btn-outline btn-sm">CDN</a>
+      <a href="#section-errors" class="btn btn-outline btn-sm">Errors</a>
+    </div>
+  </div>
+</div>
+
+<!-- Authentication -->
+<div class="card" id="section-auth">
+  <div class="card-header">
+    <h3>Authentication</h3>
+  </div>
+  <div class="card-body">
+    <p style="margin-bottom: 12px;">Semua API endpoint (kecuali CDN public access) memerlukan API key di header:</p>
+    <pre class="code-block">X-API-Key: gdagg_your_api_key_here</pre>
+    <p style="margin-top: 12px; font-size: 13px; color: var(--text-secondary);">
+      API key bisa di-generate melalui endpoint <code>/api/setup/generate-key</code> atau dari halaman 
+      <a href="/dashboard/api-keys">API Keys</a> di dashboard.
+    </p>
+  </div>
+</div>
+
+<!-- Setup -->
+<div class="card" id="section-setup">
+  <div class="card-header">
+    <h3>Setup</h3>
+  </div>
+  <div class="card-body">
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">POST</span>
+        <code>/api/setup/generate-key</code>
+        <span class="badge badge-success">No Auth (first time)</span>
+      </div>
+      <p class="endpoint-desc">Generate API key baru. Pertama kali tidak perlu auth, setelah ada key harus pakai auth.</p>
+      <div class="endpoint-details">
+        <h4>Request Body (JSON)</h4>
+        <pre class="code-block">{
+  "name": "My API Key"
+}</pre>
+        <h4>Response <span class="badge badge-success">201</span></h4>
+        <pre class="code-block">{
+  "data": {
+    "apiKey": "gdagg_a1b2c3d4e5f6...",
+    "name": "My API Key",
+    "message": "Store this API key securely. It cannot be retrieved again."
+  }
+}</pre>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Accounts -->
+<div class="card" id="section-accounts">
+  <div class="card-header">
+    <h3>Accounts</h3>
+  </div>
+  <div class="card-body">
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/accounts/oauth/url</code>
+      </div>
+      <p class="endpoint-desc">Dapatkan URL OAuth2 untuk menambahkan akun Google Drive baru.</p>
+      <div class="endpoint-details">
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": {
+    "url": "https://accounts.google.com/o/oauth2/v2/auth?..."
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/accounts/oauth/callback</code>
+        <span class="badge badge-info">Auto (redirect)</span>
+      </div>
+      <p class="endpoint-desc">OAuth2 callback. Dipanggil otomatis oleh Google setelah user authorize.</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/accounts</code>
+      </div>
+      <p class="endpoint-desc">List semua akun Google Drive yang terhubung.</p>
+      <div class="endpoint-details">
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": [
+    {
+      "id": "uuid",
+      "email": "user@gmail.com",
+      "totalStorage": "16106127360",
+      "usedStorage": "5234567890",
+      "freeStorage": "10871559470",
+      "isActive": true,
+      "createdAt": "2026-01-01T00:00:00.000Z",
+      "updatedAt": "2026-01-01T00:00:00.000Z"
+    }
+  ],
+  "count": 1
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/accounts/:id</code>
+      </div>
+      <p class="endpoint-desc">Detail akun tertentu beserta jumlah file.</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method delete">DELETE</span>
+        <code>/api/accounts/:id</code>
+      </div>
+      <p class="endpoint-desc">Hapus akun Google Drive. File metadata juga akan terhapus (cascade).</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">POST</span>
+        <code>/api/accounts/:id/refresh</code>
+      </div>
+      <p class="endpoint-desc">Refresh OAuth token dan update info storage terbaru dari Google Drive.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- Files -->
+<div class="card" id="section-files">
+  <div class="card-header">
+    <h3>Files</h3>
+  </div>
+  <div class="card-body">
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">POST</span>
+        <code>/api/files/upload</code>
+      </div>
+      <p class="endpoint-desc">Upload file ke Google Drive. Otomatis memilih akun dengan free space terbanyak.</p>
+      <div class="endpoint-details">
+        <h4>Request Body (multipart/form-data)</h4>
+        <table class="table">
+          <thead><tr><th>Field</th><th>Type</th><th>Required</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>file</code></td><td>File</td><td>Yes</td><td>File yang diupload (max 100MB)</td></tr>
+            <tr><td><code>path</code></td><td>string</td><td>No</td><td>Virtual path, default: <code>/</code></td></tr>
+            <tr><td><code>cdn</code></td><td>string</td><td>No</td><td><code>"true"</code> atau <code>"false"</code> - aktifkan CDN</td></tr>
+            <tr><td><code>cdnExpiry</code></td><td>number</td><td>No</td><td>Expiry dalam detik. Jika diisi, generate signed URL. Jika kosong, buat permanent public URL</td></tr>
+          </tbody>
+        </table>
+
+        <h4>Response <span class="badge badge-success">201</span></h4>
+        <pre class="code-block">{
+  "data": {
+    "id": "file-uuid",
+    "name": "photo.jpg",
+    "mimeType": "image/jpeg",
+    "size": "1048576",
+    "path": "/",
+    "accountId": "account-uuid",
+    "isPublic": true,
+    "cdnUrl": "/cdn/abc123def456",
+    "signedUrl": null,
+    "signedUrlExpiresIn": null,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+}</pre>
+
+        <h4>Examples</h4>
+        <pre class="code-block"># Upload dengan CDN permanent
+curl -X POST http://localhost:3000/api/files/upload \
+  -H "X-API-Key: gdagg_..." \
+  -F "file=@photo.jpg" \
+  -F "cdn=true"
+
+# Upload dengan signed URL (2 jam)
+curl -X POST http://localhost:3000/api/files/upload \
+  -H "X-API-Key: gdagg_..." \
+  -F "file=@doc.pdf" \
+  -F "cdn=true" \
+  -F "cdnExpiry=7200"
+
+# Upload tanpa CDN
+curl -X POST http://localhost:3000/api/files/upload \
+  -H "X-API-Key: gdagg_..." \
+  -F "file=@data.csv"</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/files</code>
+      </div>
+      <p class="endpoint-desc">List semua file (paginated).</p>
+      <div class="endpoint-details">
+        <h4>Query Parameters</h4>
+        <table class="table">
+          <thead><tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>page</code></td><td>number</td><td>1</td><td>Halaman</td></tr>
+            <tr><td><code>limit</code></td><td>number</td><td>20</td><td>Jumlah per halaman (max 100)</td></tr>
+          </tbody>
+        </table>
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": [...],
+  "pagination": {
+    "page": 1,
+    "limit": 20,
+    "total": 50,
+    "totalPages": 3
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/files/search</code>
+      </div>
+      <p class="endpoint-desc">Cari file berdasarkan nama, mime type, atau path.</p>
+      <div class="endpoint-details">
+        <h4>Query Parameters</h4>
+        <table class="table">
+          <thead><tr><th>Param</th><th>Type</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>q</code></td><td>string</td><td>Search by nama file</td></tr>
+            <tr><td><code>mimeType</code></td><td>string</td><td>Filter by MIME type</td></tr>
+            <tr><td><code>path</code></td><td>string</td><td>Filter by path prefix</td></tr>
+            <tr><td><code>page</code></td><td>number</td><td>Halaman</td></tr>
+            <tr><td><code>limit</code></td><td>number</td><td>Jumlah per halaman</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/files/:id</code>
+      </div>
+      <p class="endpoint-desc">Get metadata file tertentu.</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/files/:id/download</code>
+      </div>
+      <p class="endpoint-desc">Download file. Response berupa file stream.</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method delete">DELETE</span>
+        <code>/api/files/:id</code>
+      </div>
+      <p class="endpoint-desc">Hapus file dari Google Drive dan database.</p>
+      <div class="endpoint-details">
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": { "message": "File deleted successfully" }
+}</pre>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Storage -->
+<div class="card" id="section-storage">
+  <div class="card-header">
+    <h3>Storage</h3>
+  </div>
+  <div class="card-body">
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/storage</code>
+      </div>
+      <p class="endpoint-desc">Info storage aggregated dari semua akun.</p>
+      <div class="endpoint-details">
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": {
+    "totalStorage": "32212254720",
+    "usedStorage": "10737418240",
+    "freeStorage": "21474836480",
+    "usagePercentage": 33.33,
+    "accountCount": 2,
+    "totalFiles": 150
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/storage/accounts</code>
+      </div>
+      <p class="endpoint-desc">Breakdown storage per akun.</p>
+      <div class="endpoint-details">
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": [
+    {
+      "id": "uuid",
+      "email": "user@gmail.com",
+      "totalStorage": "16106127360",
+      "usedStorage": "5368709120",
+      "freeStorage": "10737418240",
+      "usagePercentage": 33.33,
+      "isActive": true,
+      "fileCount": 75
+    }
+  ]
+}</pre>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- CDN -->
+<div class="card" id="section-cdn">
+  <div class="card-header">
+    <h3>CDN</h3>
+  </div>
+  <div class="card-body">
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method post">POST</span>
+        <code>/api/files/:id/publish</code>
+      </div>
+      <p class="endpoint-desc">Buat file menjadi public. Generate permanent CDN slug.</p>
+      <div class="endpoint-details">
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": {
+    "message": "File published successfully",
+    "slug": "abc123def456",
+    "url": "/cdn/abc123def456"
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method delete">DELETE</span>
+        <code>/api/files/:id/publish</code>
+      </div>
+      <p class="endpoint-desc">Revoke public access. File tidak bisa diakses via CDN lagi.</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/api/files/:id/signed-url</code>
+      </div>
+      <p class="endpoint-desc">Generate signed URL dengan expiry time.</p>
+      <div class="endpoint-details">
+        <h4>Query Parameters</h4>
+        <table class="table">
+          <thead><tr><th>Param</th><th>Type</th><th>Default</th><th>Description</th></tr></thead>
+          <tbody>
+            <tr><td><code>expiry</code></td><td>number</td><td>3600</td><td>Expiry dalam detik</td></tr>
+          </tbody>
+        </table>
+        <h4>Response <span class="badge badge-success">200</span></h4>
+        <pre class="code-block">{
+  "data": {
+    "url": "/cdn/signed/eyJmaWxlSWQ...",
+    "expiresIn": 3600
+  }
+}</pre>
+      </div>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/cdn/:slug</code>
+        <span class="badge badge-success">No Auth</span>
+      </div>
+      <p class="endpoint-desc">Akses file public via CDN slug. Tidak perlu API key.</p>
+    </div>
+
+    <div class="endpoint">
+      <div class="endpoint-header">
+        <span class="method get">GET</span>
+        <code>/cdn/signed/:token</code>
+        <span class="badge badge-success">No Auth</span>
+      </div>
+      <p class="endpoint-desc">Akses file via signed URL. Tidak perlu API key. Expired = 403.</p>
+    </div>
+
+  </div>
+</div>
+
+<!-- Errors -->
+<div class="card" id="section-errors">
+  <div class="card-header">
+    <h3>Error Responses</h3>
+  </div>
+  <div class="card-body">
+    <p style="margin-bottom: 16px;">Semua error mengikuti format yang sama:</p>
+    <pre class="code-block">{
+  "error": "Error message description"
+}</pre>
+
+    <h4 style="margin-top: 20px;">HTTP Status Codes</h4>
+    <table class="table">
+      <thead><tr><th>Code</th><th>Description</th></tr></thead>
+      <tbody>
+        <tr><td><code>200</code></td><td>Success</td></tr>
+        <tr><td><code>201</code></td><td>Created (upload, generate key)</td></tr>
+        <tr><td><code>400</code></td><td>Bad Request - missing/invalid parameters</td></tr>
+        <tr><td><code>401</code></td><td>Unauthorized - missing or invalid API key</td></tr>
+        <tr><td><code>403</code></td><td>Forbidden - expired signed URL</td></tr>
+        <tr><td><code>404</code></td><td>Not Found - resource doesn't exist</td></tr>
+        <tr><td><code>429</code></td><td>Too Many Requests - rate limited</td></tr>
+        <tr><td><code>500</code></td><td>Internal Server Error</td></tr>
+        <tr><td><code>507</code></td><td>Insufficient Storage - no account has enough space</td></tr>
+      </tbody>
+    </table>
+
+    <h4 style="margin-top: 20px;">Rate Limits</h4>
+    <table class="table">
+      <thead><tr><th>Endpoint</th><th>Limit</th><th>Window</th></tr></thead>
+      <tbody>
+        <tr><td>General API</td><td>100 requests</td><td>15 minutes</td></tr>
+        <tr><td>File Upload</td><td>30 requests</td><td>15 minutes</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<style>
+  .endpoint {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+  .endpoint:last-child { margin-bottom: 0; }
+  .endpoint-header {
+    padding: 12px 16px;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+  .endpoint-desc {
+    padding: 12px 16px;
+    font-size: 14px;
+    color: var(--text-secondary);
+    border-bottom: 1px solid var(--border);
+  }
+  .endpoint-details {
+    padding: 16px;
+  }
+  .endpoint-details h4 {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 8px;
+    margin-top: 16px;
+  }
+  .endpoint-details h4:first-child { margin-top: 0; }
+  .method {
+    display: inline-block;
+    padding: 4px 10px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 700;
+    font-family: monospace;
+    color: #fff;
+  }
+  .method.get { background: var(--primary); }
+  .method.post { background: var(--success); }
+  .method.put { background: var(--warning); color: #333; }
+  .method.delete { background: var(--danger); }
+  .code-block {
+    background: #1e1e2e;
+    color: #cdd6f4;
+    padding: 16px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-family: 'Fira Code', 'Cascadia Code', monospace;
+    overflow-x: auto;
+    white-space: pre;
+    line-height: 1.5;
+  }
+  .endpoint-details .table {
+    font-size: 13px;
+  }
+  .endpoint-details .table th {
+    font-size: 11px;
+  }
+</style>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    document.getElementById('base-url').textContent = window.location.origin;
+  });
+</script>

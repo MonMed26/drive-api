@@ -1,0 +1,189 @@
+<div class="page-header">
+  <h2>Dashboard Overview</h2>
+  <p>Monitor your aggregated Google Drive storage</p>
+</div>
+
+<div class="stats-grid" id="stats-grid">
+  <div class="stat-card">
+    <div class="stat-icon blue">&#9729;</div>
+    <div class="stat-value" id="stat-total">--</div>
+    <div class="stat-label">Total Storage</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon orange">&#9632;</div>
+    <div class="stat-value" id="stat-used">--</div>
+    <div class="stat-label">Used Storage</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green">&#9650;</div>
+    <div class="stat-value" id="stat-free">--</div>
+    <div class="stat-label">Free Storage</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon blue">&#9734;</div>
+    <div class="stat-value" id="stat-accounts">--</div>
+    <div class="stat-label">Connected Accounts</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon red">&#9776;</div>
+    <div class="stat-value" id="stat-files">--</div>
+    <div class="stat-label">Total Files</div>
+  </div>
+  <div class="stat-card">
+    <div class="stat-icon green">&#9679;</div>
+    <div class="stat-value" id="stat-usage">--</div>
+    <div class="stat-label">Usage Percentage</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header">
+    <h3>Storage Usage</h3>
+  </div>
+  <div class="card-body">
+    <div class="progress-bar" style="height: 24px; border-radius: 12px;">
+      <div class="fill blue" id="usage-bar" style="width: 0%;"></div>
+    </div>
+    <p style="margin-top: 12px; font-size: 13px; color: var(--text-secondary);">
+      <span id="usage-text">Loading...</span>
+    </p>
+  </div>
+</div>
+
+<div class="stats-grid">
+  <div class="card" style="margin-bottom: 0;">
+    <div class="card-header">
+      <h3>Accounts Breakdown</h3>
+    </div>
+    <div class="card-body" id="accounts-breakdown">
+      <div class="empty-state">
+        <p>Loading...</p>
+      </div>
+    </div>
+  </div>
+  <div class="card" style="margin-bottom: 0;">
+    <div class="card-header">
+      <h3>Recent Files</h3>
+    </div>
+    <div class="card-body" id="recent-files">
+      <div class="empty-state">
+        <p>Loading...</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- API Key Setup Modal -->
+<div class="modal-overlay" id="apikey-modal">
+  <div class="modal">
+    <h3>Setup API Key</h3>
+    <p style="margin-bottom: 16px; font-size: 14px; color: var(--text-secondary);">
+      Enter your API key to access the dashboard. If you don't have one, generate it first.
+    </p>
+    <div class="form-group">
+      <label>API Key</label>
+      <input type="text" id="apikey-input" placeholder="gdagg_...">
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn btn-primary" onclick="saveApiKey()">Save & Connect</button>
+      <button class="btn btn-outline" onclick="generateFirstKey()">Generate New Key</button>
+    </div>
+    <div id="apikey-result" style="margin-top: 16px;"></div>
+  </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    if (!getApiKey()) {
+      document.getElementById('apikey-modal').classList.add('active');
+    } else {
+      loadDashboard();
+    }
+  });
+
+  function saveApiKey() {
+    const key = document.getElementById('apikey-input').value.trim();
+    if (!key) return showToast('Please enter an API key', 'error');
+    setApiKey(key);
+    document.getElementById('apikey-modal').classList.remove('active');
+    loadDashboard();
+  }
+
+  async function generateFirstKey() {
+    try {
+      const res = await fetch('/api/setup/generate-key', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: 'Dashboard Key' }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+      
+      const resultDiv = document.getElementById('apikey-result');
+      resultDiv.innerHTML = `
+        <div class="alert alert-success">
+          <strong>Key generated!</strong> Save this key securely:<br>
+          <code style="word-break: break-all;">${data.data.apiKey}</code>
+        </div>
+      `;
+      document.getElementById('apikey-input').value = data.data.apiKey;
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function loadDashboard() {
+    try {
+      const [storageRes, accountsRes, filesRes] = await Promise.all([
+        apiCall('/api/storage'),
+        apiCall('/api/storage/accounts'),
+        apiCall('/api/files?limit=5'),
+      ]);
+
+      const storage = storageRes.data;
+      document.getElementById('stat-total').textContent = formatBytes(storage.totalStorage);
+      document.getElementById('stat-used').textContent = formatBytes(storage.usedStorage);
+      document.getElementById('stat-free').textContent = formatBytes(storage.freeStorage);
+      document.getElementById('stat-accounts').textContent = storage.accountCount;
+      document.getElementById('stat-files').textContent = storage.totalFiles;
+      document.getElementById('stat-usage').textContent = storage.usagePercentage.toFixed(1) + '%';
+
+      // Usage bar
+      document.getElementById('usage-bar').style.width = storage.usagePercentage + '%';
+      document.getElementById('usage-text').textContent = 
+        `${formatBytes(storage.usedStorage)} used of ${formatBytes(storage.totalStorage)} total`;
+
+      // Accounts breakdown
+      const accountsHtml = accountsRes.data.length > 0
+        ? accountsRes.data.map(a => `
+          <div style="margin-bottom: 16px;">
+            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+              <span>${a.email}</span>
+              <span>${formatBytes(a.usedStorage)} / ${formatBytes(a.totalStorage)}</span>
+            </div>
+            <div class="progress-bar">
+              <div class="fill ${a.usagePercentage > 80 ? 'red' : a.usagePercentage > 60 ? 'orange' : 'blue'}" 
+                   style="width: ${a.usagePercentage}%;"></div>
+            </div>
+          </div>
+        `).join('')
+        : '<div class="empty-state"><p>No accounts connected</p></div>';
+      document.getElementById('accounts-breakdown').innerHTML = accountsHtml;
+
+      // Recent files
+      const filesHtml = filesRes.data.length > 0
+        ? '<table class="table"><thead><tr><th>Name</th><th>Size</th></tr></thead><tbody>' +
+          filesRes.data.map(f => `
+            <tr><td>${f.name}</td><td>${formatBytes(f.size)}</td></tr>
+          `).join('') + '</tbody></table>'
+        : '<div class="empty-state"><p>No files uploaded yet</p></div>';
+      document.getElementById('recent-files').innerHTML = filesHtml;
+
+    } catch (err) {
+      if (err.message.includes('Invalid') || err.message.includes('Missing')) {
+        document.getElementById('apikey-modal').classList.add('active');
+      }
+      showToast(err.message, 'error');
+    }
+  }
+</script>

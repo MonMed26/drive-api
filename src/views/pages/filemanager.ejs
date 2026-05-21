@@ -1,0 +1,468 @@
+<div class="page-header">
+  <h2>File Manager</h2>
+  <p>Browse and manage your files and folders</p>
+</div>
+
+<!-- Breadcrumb -->
+<div class="card" style="margin-bottom: 16px;">
+  <div class="card-body" style="padding: 12px 20px; display: flex; align-items: center; justify-content: space-between;">
+    <div class="breadcrumb" id="breadcrumb">
+      <a href="#" onclick="navigateTo(null)" class="breadcrumb-item">Root</a>
+    </div>
+    <div style="display: flex; gap: 8px;">
+      <button class="btn btn-primary btn-sm" onclick="showNewFolderModal()">+ New Folder</button>
+      <button class="btn btn-outline btn-sm" onclick="showUploadModal()">Upload File</button>
+    </div>
+  </div>
+</div>
+
+<!-- Contents -->
+<div class="card">
+  <div class="card-body" style="padding: 0;">
+    <table class="table" id="fm-table">
+      <thead>
+        <tr>
+          <th style="width: 40px;"></th>
+          <th>Name</th>
+          <th>Type</th>
+          <th>Size</th>
+          <th>Modified</th>
+          <th>Actions</th>
+        </tr>
+      </thead>
+      <tbody id="fm-tbody">
+        <tr><td colspan="6"><div class="empty-state"><p>Loading...</p></div></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<!-- New Folder Modal -->
+<div class="modal-overlay" id="new-folder-modal">
+  <div class="modal">
+    <h3>Create New Folder</h3>
+    <div class="form-group">
+      <label>Folder Name</label>
+      <input type="text" id="new-folder-name" placeholder="My Folder" onkeyup="if(event.key==='Enter')createFolder()">
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn btn-primary" onclick="createFolder()">Create</button>
+      <button class="btn btn-outline" onclick="closeModal('new-folder-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Upload Modal -->
+<div class="modal-overlay" id="upload-modal">
+  <div class="modal">
+    <h3>Upload File</h3>
+    <div class="file-upload-zone" id="fm-upload-zone" onclick="document.getElementById('fm-file-input').click()">
+      <div class="icon">&#8682;</div>
+      <p>Click or drag & drop file here</p>
+    </div>
+    <input type="file" id="fm-file-input" style="display: none;" onchange="uploadFileToFolder(this.files[0])">
+    <div class="form-group" style="margin-top: 16px;">
+      <label>CDN</label>
+      <select id="fm-cdn-option">
+        <option value="false">Private (no CDN)</option>
+        <option value="public">Public CDN (permanent)</option>
+        <option value="signed">Signed URL (with expiry)</option>
+      </select>
+    </div>
+    <div class="form-group" id="fm-expiry-group" style="display: none;">
+      <label>Expiry (seconds)</label>
+      <input type="number" id="fm-cdn-expiry" value="3600" min="60" max="86400">
+    </div>
+    <div id="fm-upload-status" style="margin-top: 12px;"></div>
+    <div style="display: flex; gap: 12px; margin-top: 16px;">
+      <button class="btn btn-outline" onclick="closeModal('upload-modal')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Rename Modal -->
+<div class="modal-overlay" id="rename-modal">
+  <div class="modal">
+    <h3 id="rename-title">Rename</h3>
+    <div class="form-group">
+      <label>New Name</label>
+      <input type="text" id="rename-input" placeholder="New name" onkeyup="if(event.key==='Enter')submitRename()">
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn btn-primary" onclick="submitRename()">Rename</button>
+      <button class="btn btn-outline" onclick="closeModal('rename-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Move Modal -->
+<div class="modal-overlay" id="move-modal">
+  <div class="modal">
+    <h3>Move to Folder</h3>
+    <div class="form-group">
+      <label>Select Destination</label>
+      <select id="move-target">
+        <option value="">Root (top level)</option>
+      </select>
+    </div>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn btn-primary" onclick="submitMove()">Move</button>
+      <button class="btn btn-outline" onclick="closeModal('move-modal')">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<style>
+  .breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+  .breadcrumb-item {
+    color: var(--primary);
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+  }
+  .breadcrumb-item:hover { text-decoration: underline; }
+  .breadcrumb-item.current {
+    color: var(--text);
+    pointer-events: none;
+  }
+  .breadcrumb-sep {
+    color: var(--text-secondary);
+    font-size: 12px;
+  }
+  .fm-icon {
+    font-size: 20px;
+    text-align: center;
+  }
+  .fm-icon.folder { color: var(--warning); }
+  .fm-icon.file { color: var(--primary); }
+  .fm-name {
+    cursor: pointer;
+    font-weight: 500;
+  }
+  .fm-name:hover { color: var(--primary); text-decoration: underline; }
+  .fm-actions {
+    display: flex;
+    gap: 4px;
+    flex-wrap: wrap;
+  }
+</style>
+
+<script>
+  let currentFolderId = null;
+  let renameTarget = { type: null, id: null };
+  let moveTarget = { type: null, id: null };
+  let allFolders = [];
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadContents();
+    loadFolderTree();
+    setupCdnToggle();
+    setupUploadDragDrop();
+  });
+
+  function setupCdnToggle() {
+    document.getElementById('fm-cdn-option').addEventListener('change', (e) => {
+      document.getElementById('fm-expiry-group').style.display = 
+        e.target.value === 'signed' ? 'block' : 'none';
+    });
+  }
+
+  function setupUploadDragDrop() {
+    const zone = document.getElementById('fm-upload-zone');
+    zone.addEventListener('dragover', (e) => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      zone.classList.remove('dragover');
+      if (e.dataTransfer.files.length > 0) uploadFileToFolder(e.dataTransfer.files[0]);
+    });
+  }
+
+  async function loadFolderTree() {
+    try {
+      const res = await apiCall('/api/folders/tree');
+      allFolders = flattenTree(res.data);
+    } catch (err) { /* ignore */ }
+  }
+
+  function flattenTree(tree, prefix = '') {
+    let result = [];
+    for (const node of tree) {
+      const label = prefix ? `${prefix} / ${node.name}` : node.name;
+      result.push({ id: node.id, label });
+      if (node.children && node.children.length > 0) {
+        result = result.concat(flattenTree(node.children, label));
+      }
+    }
+    return result;
+  }
+
+  async function loadContents() {
+    try {
+      let folders = [];
+      let files = [];
+      let breadcrumb = [];
+
+      if (currentFolderId) {
+        const res = await apiCall(`/api/folders/${currentFolderId}/contents`);
+        folders = res.data.subfolders;
+        files = res.data.files;
+        breadcrumb = res.data.breadcrumb;
+      } else {
+        // Root level
+        const [foldersRes, filesRes] = await Promise.all([
+          apiCall('/api/folders?parentId='),
+          apiCall('/api/files?limit=100'),
+        ]);
+        folders = foldersRes.data;
+        // Only show files without a folder at root
+        files = filesRes.data.filter(f => !f.folderId);
+      }
+
+      renderBreadcrumb(breadcrumb);
+      renderContents(folders, files);
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  function renderBreadcrumb(breadcrumb) {
+    const el = document.getElementById('breadcrumb');
+    let html = `<a href="#" onclick="navigateTo(null)" class="breadcrumb-item">Root</a>`;
+    for (const item of breadcrumb) {
+      html += `<span class="breadcrumb-sep">/</span>`;
+      if (item.id === currentFolderId) {
+        html += `<span class="breadcrumb-item current">${item.name}</span>`;
+      } else {
+        html += `<a href="#" onclick="navigateTo('${item.id}')" class="breadcrumb-item">${item.name}</a>`;
+      }
+    }
+    el.innerHTML = html;
+  }
+
+  function renderContents(folders, files) {
+    const tbody = document.getElementById('fm-tbody');
+
+    if (folders.length === 0 && files.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state"><div class="icon">&#128193;</div><p>This folder is empty</p></div></td></tr>';
+      return;
+    }
+
+    let html = '';
+
+    // Folders first
+    for (const f of folders) {
+      const itemCount = (f._count?.children || 0) + (f._count?.files || 0);
+      html += `
+        <tr>
+          <td><div class="fm-icon folder">&#128193;</div></td>
+          <td><span class="fm-name" onclick="navigateTo('${f.id}')">${f.name}</span></td>
+          <td><span class="badge badge-info">Folder</span></td>
+          <td>${itemCount} items</td>
+          <td>${new Date(f.createdAt || f.updatedAt).toLocaleDateString()}</td>
+          <td>
+            <div class="fm-actions">
+              <button class="btn btn-outline btn-sm" onclick="showRename('folder','${f.id}','${f.name}')">Rename</button>
+              <button class="btn btn-outline btn-sm" onclick="showMove('folder','${f.id}')">Move</button>
+              <button class="btn btn-danger btn-sm" onclick="deleteFolder('${f.id}','${f.name}')">Del</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    // Files
+    for (const f of files) {
+      const ext = f.mimeType ? f.mimeType.split('/').pop() : '?';
+      html += `
+        <tr>
+          <td><div class="fm-icon file">&#128196;</div></td>
+          <td><span class="fm-name" onclick="window.open('/api/files/${f.id}/download','_blank')">${f.name}</span></td>
+          <td><span class="badge badge-info">${ext}</span></td>
+          <td>${formatBytes(f.size)}</td>
+          <td>${new Date(f.createdAt || f.updatedAt).toLocaleDateString()}</td>
+          <td>
+            <div class="fm-actions">
+              <button class="btn btn-outline btn-sm" onclick="showRename('file','${f.id}','${f.name}')">Rename</button>
+              <button class="btn btn-outline btn-sm" onclick="showMove('file','${f.id}')">Move</button>
+              <a href="/api/files/${f.id}/download" class="btn btn-outline btn-sm" target="_blank">DL</a>
+              <button class="btn btn-danger btn-sm" onclick="deleteFile('${f.id}','${f.name}')">Del</button>
+            </div>
+          </td>
+        </tr>
+      `;
+    }
+
+    tbody.innerHTML = html;
+  }
+
+  function navigateTo(folderId) {
+    currentFolderId = folderId;
+    loadContents();
+  }
+
+  // --- Folder operations ---
+  function showNewFolderModal() {
+    document.getElementById('new-folder-name').value = '';
+    document.getElementById('new-folder-modal').classList.add('active');
+    setTimeout(() => document.getElementById('new-folder-name').focus(), 100);
+  }
+
+  async function createFolder() {
+    const name = document.getElementById('new-folder-name').value.trim();
+    if (!name) return showToast('Enter a folder name', 'error');
+    try {
+      await apiCall('/api/folders', {
+        method: 'POST',
+        body: JSON.stringify({ name, parentId: currentFolderId }),
+      });
+      closeModal('new-folder-modal');
+      showToast('Folder created');
+      loadContents();
+      loadFolderTree();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function deleteFolder(id, name) {
+    if (!confirm(`Delete folder "${name}" and all its contents?`)) return;
+    try {
+      await apiCall(`/api/folders/${id}`, { method: 'DELETE' });
+      showToast('Folder deleted');
+      loadContents();
+      loadFolderTree();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // --- File operations ---
+  function showUploadModal() {
+    document.getElementById('fm-upload-status').innerHTML = '';
+    document.getElementById('upload-modal').classList.add('active');
+  }
+
+  async function uploadFileToFolder(file) {
+    if (!file) return;
+    const status = document.getElementById('fm-upload-status');
+    status.innerHTML = `<p style="color: var(--text-secondary);">Uploading ${file.name}...</p>`;
+
+    try {
+      const cdnOption = document.getElementById('fm-cdn-option').value;
+      const formData = new FormData();
+      formData.append('file', file);
+      if (currentFolderId) formData.append('folderId', currentFolderId);
+      if (cdnOption === 'public') {
+        formData.append('cdn', 'true');
+      } else if (cdnOption === 'signed') {
+        formData.append('cdn', 'true');
+        formData.append('cdnExpiry', document.getElementById('fm-cdn-expiry').value);
+      }
+
+      const key = getApiKey();
+      const res = await fetch('/api/files/upload', {
+        method: 'POST',
+        headers: { 'X-API-Key': key },
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error);
+
+      let cdnInfo = '';
+      if (data.data.cdnUrl) cdnInfo = `<br>CDN URL: <code>${window.location.origin}${data.data.cdnUrl}</code>`;
+      if (data.data.signedUrl) cdnInfo = `<br>Signed URL: <code>${window.location.origin}${data.data.signedUrl}</code> (expires in ${data.data.signedUrlExpiresIn}s)`;
+
+      status.innerHTML = `<div class="alert alert-success">Uploaded ${file.name} successfully!${cdnInfo}</div>`;
+      showToast('File uploaded');
+      loadContents();
+    } catch (err) {
+      status.innerHTML = `<div class="alert alert-danger">Upload failed: ${err.message}</div>`;
+      showToast(err.message, 'error');
+    }
+  }
+
+  async function deleteFile(id, name) {
+    if (!confirm(`Delete file "${name}"?`)) return;
+    try {
+      await apiCall(`/api/files/${id}`, { method: 'DELETE' });
+      showToast('File deleted');
+      loadContents();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // --- Rename ---
+  function showRename(type, id, currentName) {
+    renameTarget = { type, id };
+    document.getElementById('rename-title').textContent = `Rename ${type}`;
+    document.getElementById('rename-input').value = currentName;
+    document.getElementById('rename-modal').classList.add('active');
+    setTimeout(() => document.getElementById('rename-input').focus(), 100);
+  }
+
+  async function submitRename() {
+    const name = document.getElementById('rename-input').value.trim();
+    if (!name) return showToast('Enter a name', 'error');
+    try {
+      const endpoint = renameTarget.type === 'folder'
+        ? `/api/folders/${renameTarget.id}`
+        : `/api/files/${renameTarget.id}/rename`;
+      const method = 'PATCH';
+      await apiCall(endpoint, { method, body: JSON.stringify({ name }) });
+      closeModal('rename-modal');
+      showToast(`${renameTarget.type} renamed`);
+      loadContents();
+      if (renameTarget.type === 'folder') loadFolderTree();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // --- Move ---
+  function showMove(type, id) {
+    moveTarget = { type, id };
+    const select = document.getElementById('move-target');
+    let html = '<option value="">Root (top level)</option>';
+    for (const f of allFolders) {
+      if (f.id === id) continue; // can't move to itself
+      html += `<option value="${f.id}">${f.label}</option>`;
+    }
+    select.innerHTML = html;
+    document.getElementById('move-modal').classList.add('active');
+  }
+
+  async function submitMove() {
+    const targetFolderId = document.getElementById('move-target').value || null;
+    try {
+      if (moveTarget.type === 'folder') {
+        await apiCall(`/api/folders/${moveTarget.id}/move`, {
+          method: 'PATCH',
+          body: JSON.stringify({ parentId: targetFolderId }),
+        });
+      } else {
+        await apiCall(`/api/files/${moveTarget.id}/move`, {
+          method: 'PATCH',
+          body: JSON.stringify({ folderId: targetFolderId }),
+        });
+      }
+      closeModal('move-modal');
+      showToast(`${moveTarget.type} moved`);
+      loadContents();
+      loadFolderTree();
+    } catch (err) {
+      showToast(err.message, 'error');
+    }
+  }
+
+  // --- Helpers ---
+  function closeModal(id) {
+    document.getElementById(id).classList.remove('active');
+  }
+</script>
