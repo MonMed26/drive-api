@@ -5,16 +5,16 @@ services:
     build: .
     container_name: gdrive-aggregator
     ports:
-      - "3000:3000"
+      - "${PORT:-3000}:${PORT:-3000}"
     environment:
-      - PORT=3000
+      - PORT=${PORT:-3000}
       - DATABASE_URL=file:/app/data/prod.db
       - API_KEY_SECRET=${API_KEY_SECRET:-change-this-secret}
       - SIGNED_URL_SECRET=${SIGNED_URL_SECRET:-change-this-signed-secret}
       - SIGNED_URL_EXPIRY=${SIGNED_URL_EXPIRY:-3600}
       - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
       - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:3000/api/accounts/oauth/callback}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:${PORT:-3000}/api/accounts/oauth/callback}
     volumes:
       - gdrive-data:/app/data
     restart: unless-stopped
